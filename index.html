@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARTIST</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<style>
+
+/* ─── RESET ───────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:      #080808;
+  --surface: rgba(255, 255, 255, 0.025);
+  --border:  #181818;
+  --text:    #efefef;
+  --muted:   #484848;
+  --accent:  #c8ff00;
+  --font:    'Space Grotesk', sans-serif;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* film grain overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: -50%;
+  width: 200%; height: 200%;
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='1'/></svg>");
+  opacity: 0.04;
+  pointer-events: none;
+  z-index: 9998;
+  animation: grain 6s steps(10) infinite;
+}
+
+@keyframes grain {
+  0%   { transform: translate(0,0); }
+  10%  { transform: translate(-5%,-10%); }
+  20%  { transform: translate(-15%, 5%); }
+  30%  { transform: translate(7%,-25%); }
+  40%  { transform: translate(-5%, 25%); }
+  50%  { transform: translate(-15%, 10%); }
+  60%  { transform: translate(15%, 0); }
+  70%  { transform: translate(0, 15%); }
+  80%  { transform: translate(3%, 35%); }
+  90%  { transform: translate(-10%, 10%); }
+}
+
+/* ─── LOADER ──────────────────────────────────────────────── */
+#loader {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  cursor: pointer;
+  transition: opacity 0.9s ease, visibility 0.9s ease;
+}
+
+#loader.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#vinyl-wrapper {
+  width: 220px;
+  height: 220px;
+  animation: spin 2s linear infinite;
+  will-change: transform;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+#loader-label {
+  font-size: 10px;
+  letter-spacing: 0.5em;
+  color: var(--muted);
+  text-transform: uppercase;
+  animation: blink 2.4s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 1; }
+}
+
+/* ─── MAIN APP ────────────────────────────────────────────── */
+#app {
+  display: grid;
+  grid-template-columns: 270px 1fr 300px;
+  height: 100vh;
+  width: 100vw;
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+
+#app.visible { opacity: 1; }
+
+/* ─── SHARED PANEL ────────────────────────────────────────── */
+.panel {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+
+#left-panel  { border-right: 1px solid var(--border); }
+#right-panel { border-left:  1px solid var(--border); }
+
+.panel-header {
+  padding: 32px 24px 18px;
+  font-size: 9px;
+  letter-spacing: 0.45em;
+  color: var(--muted);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ─── LEFT PANEL ──────────────────────────────────────────── */
+#track-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 0;
+  scrollbar-width: none;
+}
+#track-list::-webkit-scrollbar { display: none; }
+
+.track-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 24px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.18s ease, border-color 0.18s ease;
+  position: relative;
+}
+
+.track-item:hover {
+  background: rgba(255,255,255,0.035);
+  border-left-color: rgba(200,255,0,0.35);
+}
+
+.track-item.active {
+  background: rgba(200,255,0,0.05);
+  border-left-color: var(--accent);
+}
+
+.track-num {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  min-width: 22px;
+  flex-shrink: 0;
+  transition: color 0.18s;
+}
+
+.track-item.active .track-num { color: var(--accent); }
+
+.track-info { flex: 1; min-width: 0; }
+
+.track-title {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.18s;
+}
+
+.track-item.active .track-title { color: var(--accent); }
+
+.track-duration {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 3px;
+  letter-spacing: 0.04em;
+}
+
+.track-play {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.18s;
+}
+
+.track-item:hover .track-play,
+.track-item.active .track-play { opacity: 1; }
+
+/* ─── CENTER PANEL ────────────────────────────────────────── */
+#center-panel {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#artist-watermark {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  letter-spacing: 0.55em;
+  color: var(--muted);
+  text-transform: uppercase;
+  z-index: 20;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+#three-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* YouTube iframe overlay — JS positions this over the TV screen */
+#youtube-container {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+#youtube-container.playing {
+  opacity: 1;
+  pointer-events: all;
+}
+
+#youtube-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+/* "Select a track" placeholder — same position as youtube container */
+#screen-hint {
+  position: absolute;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+#screen-hint.hidden { opacity: 0; }
+
+#screen-hint span {
+  font-size: 9px;
+  letter-spacing: 0.4em;
+  color: #2a2a2a;
+  text-transform: uppercase;
+}
+
+/* CRT scanlines over the screen area */
+#crt-lines {
+  position: absolute;
+  z-index: 11;
+  pointer-events: none;
+  overflow: hidden;
+  transition: opacity 0.4s ease;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0,0,0,0.06) 3px,
+    rgba(0,0,0,0.06) 4px
+  );
+  border-radius: 2px;
+}
+
+/* ─── RIGHT PANEL ─────────────────────────────────────────── */
+#right-panel { display: flex; flex-direction: column; }
+
+#now-playing-body {
+  flex: 1;
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* idle */
+#idle-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+#idle-num {
+  font-size: 72px;
+  font-weight: 700;
+  line-height: 1;
+  color: #161616;
+  letter-spacing: -0.03em;
+  user-select: none;
+}
+
+#idle-sub {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+  margin-top: 16px;
+}
+
+/* active track info */
+#track-info {
+  display: none;
+  flex-direction: column;
+  gap: 0;
+}
+
+#active-num {
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 1;
+  color: #222;
+  letter-spacing: -0.03em;
+  margin-bottom: 20px;
+}
+
+#active-title {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+#active-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.75;
+  margin-top: 12px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 24px 0;
+}
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.meta-label {
+  font-size: 9px;
+  letter-spacing: 0.35em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.meta-val {
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* playing accent on right panel */
+#right-panel.playing .panel-header {
+  color: var(--accent);
+}
+
+/* ─── MOBILE FALLBACK ─────────────────────────────────────── */
+@media (max-width: 900px) {
+  #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    overflow-y: auto;
+    height: auto;
+  }
+  .panel { height: auto; }
+  #center-panel { height: 60vw; min-height: 260px; }
+}
+
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LOADING SCREEN
+═══════════════════════════════════════════════════════════ -->
+<div id="loader">
+  <div id="vinyl-wrapper">
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <!-- outer edge -->
+      <circle cx="100" cy="100" r="99" fill="#0d0d0d" stroke="#222" stroke-width="0.8"/>
+      <!-- grooves -->
+      <circle cx="100" cy="100" r="95" fill="none" stroke="#181818" stroke-width="1"/>
+      <circle cx="100" cy="100" r="90" fill="none" stroke="#161616" stroke-width="0.7"/>
+      <circle cx="100" cy="100" r="85" fill="none" stroke="#161616" stroke-width="0.7"/>
+      <circle cx="100" cy="100" r="80" fill="none" stroke="#161616" stroke-width="0.7"/>
+      <circle cx="100" cy="100" r="75" fill="none" stroke="#161616" stroke-width="0.6"/>
+      <circle cx="100" cy="100" r="70" fill="none" stroke="#161616" stroke-width="0.6"/>
+      <circle cx="100" cy="100" r="65" fill="none" stroke="#161616" stroke-width="0.6"/>
+      <circle cx="100" cy="100" r="60" fill="none" stroke="#161616" stroke-width="0.6"/>
+      <circle cx="100" cy="100" r="55" fill="none" stroke="#141414" stroke-width="0.5"/>
+      <circle cx="100" cy="100" r="50" fill="none" stroke="#141414" stroke-width="0.5"/>
+      <circle cx="100" cy="100" r="44" fill="none" stroke="#141414" stroke-width="0.5"/>
+      <!-- sheen -->
+      <ellipse cx="72" cy="68" rx="28" ry="16" fill="rgba(255,255,255,0.025)" transform="rotate(-20 100 100)"/>
+      <!-- label -->
+      <circle cx="100" cy="100" r="34" fill="#0a0a0a" stroke="#202020" stroke-width="0.5"/>
+      <text x="100" y="96" text-anchor="middle" font-family="sans-serif" font-size="7" fill="#3a3a3a" letter-spacing="4">ARTIST</text>
+      <text x="100" y="108" text-anchor="middle" font-family="sans-serif" font-size="5.5" fill="#2a2a2a" letter-spacing="3">MUSIC</text>
+      <!-- spindle hole -->
+      <circle cx="100" cy="100" r="4.5" fill="#080808" stroke="#2a2a2a" stroke-width="0.5"/>
+    </svg>
+  </div>
+  <span id="loader-label">Loading</span>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MAIN APP
+═══════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- LEFT: PLAYLIST -->
+  <div class="panel" id="left-panel">
+    <div class="panel-header">Tracks</div>
+    <div id="track-list"></div>
+  </div>
+
+  <!-- CENTER: 3D TV -->
+  <div id="center-panel">
+    <div id="artist-watermark">Artist</div>
+    <canvas id="three-canvas"></canvas>
+    <div id="screen-hint"><span>Select a track</span></div>
+    <div id="youtube-container">
+      <iframe id="youtube-frame"
+        allow="autoplay; encrypted-media; picture-in-picture"
+        allowfullscreen>
+      </iframe>
+    </div>
+    <div id="crt-lines"></div>
+  </div>
+
+  <!-- RIGHT: NOW PLAYING -->
+  <div class="panel" id="right-panel">
+    <div class="panel-header">Now Playing</div>
+    <div id="now-playing-body">
+
+      <div id="idle-msg">
+        <div id="idle-num">—</div>
+        <p id="idle-sub">Select a track from the playlist to begin.</p>
+      </div>
+
+      <div id="track-info">
+        <div id="active-num">01</div>
+        <div id="active-title">Track Title</div>
+        <div id="active-desc">Track description goes here.</div>
+        <div class="divider"></div>
+        <div class="meta-row">
+          <span class="meta-label">Duration</span>
+          <span class="meta-val" id="meta-duration">—</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Track</span>
+          <span class="meta-val" id="meta-track">—</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Source</span>
+          <span class="meta-val">YouTube</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCRIPTS
+═══════════════════════════════════════════════════════════ -->
+<script type="module">
+import * as THREE from 'three';
+
+/* ──────────────────────────────────────────────────────────
+   TRACK DATA  ← Replace with real info
+────────────────────────────────────────────────────────── */
+const tracks = [
+  {
+    id: 1, num: '01',
+    title: 'Track One',
+    ytId: 'YOUTUBE_ID_1',
+    desc: 'A brief description of this track. Replace with real info from the artist.',
+    duration: '3:42'
+  },
+  {
+    id: 2, num: '02',
+    title: 'Track Two',
+    ytId: 'YOUTUBE_ID_2',
+    desc: 'A brief description of this track. Replace with real info from the artist.',
+    duration: '4:15'
+  },
+  {
+    id: 3, num: '03',
+    title: 'Track Three',
+    ytId: 'YOUTUBE_ID_3',
+    desc: 'A brief description of this track. Replace with real info from the artist.',
+    duration: '2:58'
+  },
+  {
+    id: 4, num: '04',
+    title: 'Track Four',
+    ytId: 'YOUTUBE_ID_4',
+    desc: 'A brief description of this track. Replace with real info from the artist.',
+    duration: '5:01'
+  },
+  {
+    id: 5, num: '05',
+    title: 'Track Five',
+    ytId: 'YOUTUBE_ID_5',
+    desc: 'A brief description of this track. Replace with real info from the artist.',
+    duration: '3:33'
+  },
+  {
+    id: 6, num: '06',
+    title: 'Track Six',
+    ytId: 'YOUTUBE_ID_6',
+    desc: 'A brief description of this track. Replace with real info from the artist.',
+    duration: '4:47'
+  },
+];
+
+/* ──────────────────────────────────────────────────────────
+   LOADER
+────────────────────────────────────────────────────────── */
+const loader  = document.getElementById('loader');
+const app     = document.getElementById('app');
+
+function dismissLoader() {
+  loader.classList.add('hidden');
+  app.classList.add('visible');
+}
+
+let dismissed = false;
+function dismiss() {
+  if (dismissed) return;
+  dismissed = true;
+  dismissLoader();
+}
+
+setTimeout(dismiss, 2500);
+loader.addEventListener('click', dismiss);
+
+/* ──────────────────────────────────────────────────────────
+   BUILD PLAYLIST
+────────────────────────────────────────────────────────── */
+const trackList = document.getElementById('track-list');
+
+tracks.forEach(track => {
+  const el = document.createElement('div');
+  el.className = 'track-item';
+  el.dataset.id = track.id;
+  el.innerHTML = `
+    <span class="track-num">${track.num}</span>
+    <div class="track-info">
+      <div class="track-title">${track.title}</div>
+      <div class="track-duration">${track.duration}</div>
+    </div>
+    <svg class="track-play" viewBox="0 0 24 24" fill="currentColor">
+      <polygon points="5,3 19,12 5,21"/>
+    </svg>
+  `;
+  el.addEventListener('click', () => playTrack(track));
+  trackList.appendChild(el);
+});
+
+/* ──────────────────────────────────────────────────────────
+   PLAY TRACK
+────────────────────────────────────────────────────────── */
+const youtubeContainer = document.getElementById('youtube-container');
+const youtubeFrame     = document.getElementById('youtube-frame');
+const screenHint       = document.getElementById('screen-hint');
+const crtLines         = document.getElementById('crt-lines');
+const rightPanel       = document.getElementById('right-panel');
+const idleMsg          = document.getElementById('idle-msg');
+const trackInfoEl      = document.getElementById('track-info');
+
+function playTrack(track) {
+  // playlist active state
+  document.querySelectorAll('.track-item').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.track-item[data-id="${track.id}"]`).classList.add('active');
+
+  // right panel
+  idleMsg.style.display = 'none';
+  trackInfoEl.style.display = 'flex';
+  document.getElementById('active-num').textContent   = track.num;
+  document.getElementById('active-title').textContent = track.title;
+  document.getElementById('active-desc').textContent  = track.desc;
+  document.getElementById('meta-duration').textContent = track.duration;
+  document.getElementById('meta-track').textContent   = `${track.num} / ${String(tracks.length).padStart(2,'0')}`;
+  rightPanel.classList.add('playing');
+
+  // YouTube
+  youtubeFrame.src = `https://www.youtube.com/embed/${track.ytId}?autoplay=1&controls=1&rel=0&modestbranding=1&color=white`;
+  youtubeContainer.classList.add('playing');
+  screenHint.classList.add('hidden');
+}
+
+/* ──────────────────────────────────────────────────────────
+   THREE.JS SCENE
+────────────────────────────────────────────────────────── */
+const canvas      = document.getElementById('three-canvas');
+const centerPanel = document.getElementById('center-panel');
+
+// Scene
+const scene    = new THREE.Scene();
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(centerPanel.clientWidth, centerPanel.clientHeight);
+renderer.setClearColor(0x000000, 0);
+renderer.shadowMap.enabled = true;
+
+// Camera
+const camera = new THREE.PerspectiveCamera(
+  42,
+  centerPanel.clientWidth / centerPanel.clientHeight,
+  0.1, 100
+);
+camera.position.set(0, 0.15, 7.5);
+camera.lookAt(0, 0, 0);
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
+keyLight.position.set(4, 6, 5);
+scene.add(keyLight);
+
+const rimLight = new THREE.DirectionalLight(0xc8ff00, 0.25);
+rimLight.position.set(-5, -3, 2);
+scene.add(rimLight);
+
+const fillLight = new THREE.PointLight(0x4488ff, 0.4, 20);
+fillLight.position.set(-3, 2, 4);
+scene.add(fillLight);
+
+// TV dimensions
+const BW = 4.2,  BH = 2.8,  BD = 0.28;  // bezel
+const SW = 3.65, SH = 2.2;               // screen
+
+// Materials
+const bezelMat = new THREE.MeshStandardMaterial({
+  color: 0x111111, roughness: 0.25, metalness: 0.7
+});
+const screenMat = new THREE.MeshStandardMaterial({
+  color: 0x000000, roughness: 0.02, metalness: 0.05
+});
+const innerBezelMat = new THREE.MeshStandardMaterial({
+  color: 0x0a0a0a, roughness: 0.35, metalness: 0.8
+});
+const standMat = new THREE.MeshStandardMaterial({
+  color: 0x141414, roughness: 0.4, metalness: 0.5
+});
+
+// TV group (floats as one unit)
+const tvGroup = new THREE.Group();
+scene.add(tvGroup);
+
+// Bezel body
+tvGroup.add(new THREE.Mesh(new THREE.BoxGeometry(BW, BH, BD), bezelMat));
+
+// Inner bezel ring
+const innerRing = new THREE.Mesh(new THREE.BoxGeometry(SW + 0.14, SH + 0.14, 0.1), innerBezelMat);
+innerRing.position.z = BD / 2 - 0.05;
+tvGroup.add(innerRing);
+
+// Screen face
+const screenMesh = new THREE.Mesh(new THREE.BoxGeometry(SW, SH, 0.02), screenMat);
+screenMesh.position.z = BD / 2 + 0.01;
+tvGroup.add(screenMesh);
+
+// Stand neck
+const neck = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.38, 0.18), standMat);
+neck.position.y = -BH / 2 - 0.19;
+tvGroup.add(neck);
+
+// Stand base
+const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.07, 0.55), standMat);
+base.position.y = -BH / 2 - 0.38 - 0.035;
+tvGroup.add(base);
+
+/* ── Screen corner positions in tvGroup local space ────── */
+const zFace = BD / 2 + 0.02;
+const CORNERS = [
+  new THREE.Vector3(-SW / 2,  SH / 2, zFace), // TL
+  new THREE.Vector3( SW / 2,  SH / 2, zFace), // TR
+  new THREE.Vector3(-SW / 2, -SH / 2, zFace), // BL
+  new THREE.Vector3( SW / 2, -SH / 2, zFace), // BR
+];
+
+function updateOverlayPosition() {
+  const W = centerPanel.clientWidth;
+  const H = centerPanel.clientHeight;
+
+  const pts = CORNERS.map(local => {
+    const world = local.clone();
+    tvGroup.localToWorld(world);
+    world.project(camera);
+    return {
+      x: (world.x + 1) / 2 * W,
+      y: (-world.y + 1) / 2 * H,
+    };
+  });
+
+  const left   = pts[0].x;
+  const top    = pts[0].y;
+  const width  = pts[1].x - pts[0].x;
+  const height = pts[2].y - pts[0].y;
+
+  const style = { left: left + 'px', top: top + 'px', width: width + 'px', height: height + 'px' };
+
+  Object.assign(youtubeContainer.style, style);
+  Object.assign(screenHint.style,       style);
+  Object.assign(crtLines.style,         style);
+}
+
+/* ── Resize ────────────────────────────────────────────── */
+window.addEventListener('resize', () => {
+  const W = centerPanel.clientWidth;
+  const H = centerPanel.clientHeight;
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+  renderer.setSize(W, H);
+});
+
+/* ── Render loop ───────────────────────────────────────── */
+const clock = new THREE.Clock();
+
+(function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // gentle float + micro-rotation
+  tvGroup.position.y    =  Math.sin(t * 0.75) * 0.055;
+  tvGroup.rotation.y    =  Math.sin(t * 0.35) * 0.022;
+  tvGroup.rotation.x    = -Math.sin(t * 0.28) * 0.010;
+
+  renderer.render(scene, camera);
+  updateOverlayPosition();
+})();
+
+</script>
+</body>
+</html>
